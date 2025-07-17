@@ -1,0 +1,63 @@
+# === COMMON LARGE FILE TYPES ===
+*.npy
+*.npz
+*.pt
+*.pkl
+*.ckpt
+*.h5
+*.hdf5
+*.joblib
+*.mat
+
+# === LARGE DATA FILES ===
+*.csv
+*.tsv
+*.jsonl
+*.parquet
+*.zip
+*.tar.gz
+*.tar
+*.gz
+*.bz2
+*.xz
+
+# === VIDEO / AUDIO / IMAGE FILES ===
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.mp3
+*.wav
+*.flac
+*.webm
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+*.svg
+
+# === FOLDERS THAT TEND TO CONTAIN BIG FILES ===
+data/
+dataset/
+datasets/
+outputs/
+results/
+logs/
+checkpoints/
+models/
+cache/
+
+# === OS & EDITOR FILES ===
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+
+# === PYTHON CACHE ===
+__pycache__/
+*.py[cod]
+
+# === JUPYTER NOTEBOOK ARTIFACTS ===
+.ipynb_checkpoints/
+
