@@ -48,7 +48,6 @@ checkpoints/
 models/
 cache/
 attic/
-finite_state/
 examples/*.npy
 examples/*.npz
 examples/*.csv
