@@ -47,6 +47,16 @@ logs/
 checkpoints/
 models/
 cache/
+attic/
+finite_state/
+examples/*.npy
+examples/*.npz
+examples/*.csv
+examples/*.h5
+examples/*.pkl
+examples/*.mat
+examples/*.zip
+examples/*.tar.gz
 
 # === OS & EDITOR FILES ===
 .DS_Store
