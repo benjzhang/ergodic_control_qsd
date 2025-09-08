@@ -1,6 +1,9 @@
 import numpy as np
 import importlib
 import matplotlib.pyplot as plt
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 import utils
 importlib.reload(utils)
 from utils import sde_transition_rates, one_step_sde, pure_jump_approx_diffusion, fleming_viot, event_rates, inf_swap_rate, killing_cloning, symmetrized_dynamics,symmetrized_kill_clone_rate

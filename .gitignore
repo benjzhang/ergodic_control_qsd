@@ -70,3 +70,6 @@ __pycache__/
 # === JUPYTER NOTEBOOK ARTIFACTS ===
 .ipynb_checkpoints/
 
+# === DEVELOPMENT DIARY ===
+DIARY.md
+

@@ -1,12 +1,11 @@
 import numpy as np
-import importlib
 import matplotlib.pyplot as plt
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 import utils
-importlib.reload(utils)
 from utils import sde_transition_rates, one_step_sde, pure_jump_approx_diffusion, fleming_viot, event_rates, inf_swap_rate, killing_cloning, symmetrized_kill_clone_rate, weighted_empirical_measure_functional, empirical_measure_functional
-import plot_utils
-importlib.reload(plot_utils)
-from plot_utils import plot_periodic_trajectories, plot_periodic_trajectories_list
+from utils.plotting import plot_periodic_trajectories, plot_periodic_trajectories_list
 import os
 import json
 

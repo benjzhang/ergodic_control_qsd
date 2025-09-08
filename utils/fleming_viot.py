@@ -1,94 +1,5 @@
 import numpy as np
-
-### SDE discretizations through jump processes
-
-
-def sde_transition_rates(x,beval,aeval,h): 
-    """
-    Computes rates for jump process given drift and diffusion functions
-
-    x : particle positions, shape (d,)
-    b: drift function evaluation, shape (d,)
-    a: diagonal function evaluation, shape (d,)
-    h: mean step size of lattice, scalar
-
-    returns vector of rates for jump process, shape (2*d,) first d entries are rates for positive jumps, last d entries are rates for negative jumps in the canonical basis
-    """
-
-    rates_plus = (h * beval + aeval) / (2 * h**2)
-    rates_minus = (-h * beval + aeval) / (2 * h**2)
-    if np.any(rates_plus < 0) or np.any(rates_minus < 0):
-        rates_plus = (h * np.maximum(beval,0) + aeval /2 ) / (h**2)
-        rates_minus = (h * np.maximum(-beval,0) + aeval /2 ) / (h**2)
-
-    rates = np.append(rates_plus,rates_minus)
-    return rates
-
-def one_step_sde(x,rates,h):
-    """
-    Performs one step of the jump process given current position and rates
-    x : particle positions, shape (d,)
-    rates: rates for jump process, shape (2*d,)
-    returns new position, shape (d,)
-    h: step size
-    """
-    d = len(x)
-    total_rate = np.sum(rates)
-    p = rates / total_rate
-    jump_direction = np.random.choice(np.arange(np.size(p)),p=p)
-    new_position = x.copy()
-    if jump_direction < d:
-        new_position[jump_direction] += h
-    else:
-        new_position[jump_direction - d] -= h
-    
-    return new_position
-
-
-def pure_jump_approx_diffusion(T,b,a,h0,initial_position ):
-    """ Simulate n-dimension diffusion process via pure jump process on a lattice with given drift and diffusion functions
-    
-    Parameters:
-    - T: time horizon
-    - b: drift function
-    - a: diffusion function
-    - h0: mean step size of lattice
-    - initial_position: initial position of the process
-    
-    """
-
-    d = len(initial_position) # dimension of the process
-    current_time = 0
-    all_time = np.array([current_time])
-
-    all_positions = np.array([initial_position])
-
-    while current_time < T: 
-        h = np.random.uniform(h0/2,3*h0/2)
-        beval = b(all_positions[-1,:])
-
-        aeval = a(all_positions[-1,:])
-
-        rates = sde_transition_rates(all_positions[-1,:],beval,aeval,h)
-        total_rate = np.sum(rates)
-
-        waiting_time = np.random.exponential(1/total_rate)
-        current_time += waiting_time
-        if current_time >= T:
-            break
-
-        p = rates / total_rate
-        jump_direction = np.random.choice(np.arange(np.size(p)),p=p)
-        new_position = all_positions[-1,:].copy()
-        if jump_direction < d:
-            new_position[jump_direction] += h
-        else:
-            new_position[jump_direction - d] -= h
-        all_positions = np.vstack((all_positions,new_position))
-        all_time = np.append(all_time,current_time)
-    return all_positions, all_time
-
-####
+from .sde_simulation import sde_transition_rates, one_step_sde
 
 
 ### infinite swapping functions
@@ -338,7 +249,6 @@ def fleming_viot(T, V, DV, D2V, a, epsilon, c,h0, initial_positionsx,initial_pos
             clocksx[i] = np.random.exponential(1/ratesx[i,0])
             clocksy[i] = np.random.exponential(1/ratesy[i,0])
         
-        
 
         net_event_ratex = ratesx[:,0]
         net_event_ratey = ratesy[:,0]
@@ -376,8 +286,6 @@ def estimator_inf_swap(x_allparticles,y_allparticles,all_rho,all_time,f):
 
 
 
-
-
 ## Vanilla Fleming-Viot system
 
 
@@ -408,7 +316,6 @@ def killing_cloning_vanilla(allparticles,ceval, index):
     return allparticles, index_to_recompute
 
         
-
 
 
 
@@ -518,100 +425,3 @@ def fleming_viot_vanilla(T, b, a, c, h0, initial_positions):
         all_time = np.append(all_time,current_time)
 
     return all_positions, all_time
-
-
-
-
-
-
-
-
-
-
-
-
-## Fleming-Viot with finite swapping
-
-
-
-
-
-## Postprocessing functions
-
-def empirical_measure_functional(particle_path,f,all_time): 
-    """
-    computes expectation of f with respect to empirical measure of one particle path
-    """
-
-    dt = np.append(np.diff(all_time),0)
-    feval = f(particle_path).squeeze()
-    estimator = np.sum(dt * feval, axis = 0)  / np.sum(dt)
-
-    return estimator
-
-
-def cumulative_empirical_measure_functional(particle_path, f, all_time):
-    """
-    Computes the cumulative mean of f with respect to the empirical measure of one particle path.
-    """
-    dt = np.append(np.diff(all_time),0)
-    feval = f(particle_path).squeeze()
-    cumulative_sum = np.cumsum(dt * feval)
-    cumulative_time = np.cumsum(dt)
-    cumulative_mean = cumulative_sum / cumulative_time
-    return cumulative_mean
-
-
-
-
-
-def weighted_empirical_measure_functional(x_particle,y_particle,rho,f,all_time): 
-    """
-    computes expectation of f with respect to empirical measure of coupled particles
-    """
-    dt = np.append(np.diff(all_time),0)
-    feval_fwd = f(x_particle,y_particle).squeeze()
-    feval_bwd = f(y_particle,x_particle).squeeze()
-    estimator = np.sum(dt * (feval_fwd * rho + feval_bwd * (1 - rho)), axis = 0)  / np.sum(dt)
-
-    return estimator
-
-
-def cumulative_mean_weighted_empirical_measure(x_particle, y_particle, rho, f, all_time):
-    """
-    Computes the cumulative mean of f with respect to the weighted empirical measure of coupled particles.
-    """
-    dt = np.append(np.diff(all_time),0)
-    feval_fwd = f(x_particle, y_particle).squeeze()
-    feval_bwd = f(y_particle, x_particle).squeeze()
-    weighted_values = dt * (feval_fwd * rho + feval_bwd * (1 - rho))
-    cumulative_sum = np.cumsum(weighted_values)
-    cumulative_time = np.cumsum(dt)
-    cumulative_mean = cumulative_sum / cumulative_time
-    return cumulative_mean
-
-
-def resample_simple_weighted_empirical_measure(x_particle, all_time):
-    """
-    resamples empirical measure of particle path with respect to weighted empirical measure
-    """
-
-    dt = np.append(np.diff(all_time),0)
-    weights = dt
-    weights = weights / np.sum(weights)
-    samples_index = np.random.choice(np.arange(len(weights)), size = len(weights), p = weights)
-    samples = x_particle[samples_index]
-    return samples
-
-
-def resample_weighted_empirical_measure(x_particle,rho,all_time):
-    """
-    resamples empirical measure of particle path with respect to weighted empirical measure
-    """
-
-    dt = np.append(np.diff(all_time),0)
-    weights = dt * rho
-    weights = weights / np.sum(weights)
-    samples_index = np.random.choice(np.arange(len(weights)), size = len(weights), p = weights)
-    samples = x_particle[samples_index]
-    return samples

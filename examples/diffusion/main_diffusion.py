@@ -1,6 +1,9 @@
 import numpy as np
 import importlib
 import matplotlib.pyplot as plt
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 import utils
 importlib.reload(utils)
 from utils import pure_jump_approx_diffusion

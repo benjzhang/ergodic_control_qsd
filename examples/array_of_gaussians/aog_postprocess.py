@@ -1,6 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import logsumexp
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 from utils import resample_weighted_empirical_measure
 
 
