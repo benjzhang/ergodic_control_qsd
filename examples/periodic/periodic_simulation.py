@@ -1,34 +1,29 @@
 """
 Main simulation file for periodic potential Fleming-Viot system.
 
-This file contains the core simulation function that runs a single
-Fleming-Viot simulation with specified parameters.
+This file contains functions to run individual simulations:
+- Vanilla pure jump diffusion simulation (single particles)
+- Fleming-Viot infinite swapping simulation (coupled particle system)
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 import utils
-from utils import sde_transition_rates, one_step_sde, pure_jump_approx_diffusion, fleming_viot, event_rates, inf_swap_rate, killing_cloning, symmetrized_kill_clone_rate
+from utils import pure_jump_approx_diffusion, fleming_viot
 import json
 
 
-def periodic_cos(T, epsilon, h0, Nparticles):
+def _define_periodic_potential():
     """
-    Run Fleming-Viot simulation for periodic cosine potential.
-    
-    Parameters:
-    - T: time horizon
-    - epsilon: temperature parameter  
-    - h0: mean step size
-    - Nparticles: number of particles
+    Define the periodic cosine potential and its derivatives.
     
     Returns:
-    - Dictionary containing all simulation results and metadata
+    - V, DV, D2V: potential and its first/second derivatives
+    - a: diffusion coefficient function
+    - c: additional coefficient (unused, set to 0)
     """
-    # periodic potential problem
     def V(x): 
         return np.cos(2 * np.pi * x) / (2 * np.pi)
 
@@ -39,94 +34,147 @@ def periodic_cos(T, epsilon, h0, Nparticles):
         return -2 * np.pi * np.cos(2 * np.pi * x)
 
     def a(x): 
-        return  2 * epsilon * np.ones_like(x)
+        return 2 * np.ones_like(x)  # Will be multiplied by epsilon in simulation
 
     def c(x):
         return 0
-
-    dim = 1
-
-    # Create the directory if it doesn't exist
-    output_dir = f'periodic/T_{T}_epsilon_{epsilon}_h0_{h0}_Nparticles_{Nparticles}'
-    os.makedirs(output_dir, exist_ok=True)
-
-    initial_positionsx = np.zeros((Nparticles,dim)) + 0.5 
-    initial_positionsy = np.zeros((Nparticles,dim)) + 0.5
+    
+    return V, DV, D2V, a, c
 
 
-    # Reference simulations
+def run_vanilla_simulation(T, epsilon, h0, Nparticles):
+    """
+    Run vanilla pure jump diffusion simulation for N independent particles.
+    
+    Parameters:
+    - T: time horizon
+    - epsilon: temperature parameter
+    - h0: mean step size
+    - Nparticles: number of independent particles to simulate
+    
+    Returns:
+    - simple_trajectories_times: list of time arrays for each particle
+    - simple_trajectories_x: list of position arrays for each particle
+    """
+    V, DV, D2V, a, c = _define_periodic_potential()
+    
     simple_trajectories_times = []
     simple_trajectories_x = []
-
-    for replicate in range(3):  # Reduced replicates for quick test
-        replicate_times = []
-        replicate_trajectories = []
+    
+    for i in range(Nparticles):
+        # Random initial position between -1 and 1
+        initial_position = np.array([np.random.uniform(-1, 1)])
         
-        for i in range(Nparticles):
-            initial_position = np.array([np.random.uniform(-1, 1)])  # Random initial position between -1 and 1
-            X_reference, t_reference = pure_jump_approx_diffusion(T, lambda x: -DV(x) / epsilon, a, h0, initial_position)
-            replicate_times.append(t_reference)
-            replicate_trajectories.append(X_reference)
+        # Run pure jump approximation with scaled diffusion
+        X_reference, t_reference = pure_jump_approx_diffusion(
+            T, 
+            lambda x: -DV(x) / epsilon, 
+            lambda x: a(x) * epsilon, 
+            h0, 
+            initial_position
+        )
         
-        simple_trajectories_times.append(replicate_times)
-        simple_trajectories_x.append(replicate_trajectories)
+        simple_trajectories_times.append(t_reference)
+        simple_trajectories_x.append(X_reference)
+    
+    return simple_trajectories_times, simple_trajectories_x
 
 
-    # Infinite swapping simulations
+def run_fleming_viot_simulation(T, epsilon, h0, Nparticles):
+    """
+    Run Fleming-Viot infinite swapping simulation.
+    
+    Parameters:
+    - T: time horizon
+    - epsilon: temperature parameter
+    - h0: mean step size
+    - Nparticles: number of particles in the system
+    
+    Returns:
+    - allpositionsx: forward process positions
+    - allpositionsy: backward process positions  
+    - alltime: time points
+    - all_rho: infinite swapping weights
+    """
+    V, DV, D2V, a, c = _define_periodic_potential()
+    dim = 1
+    
+    # Initial positions (centered at 0.5)
+    initial_positionsx = np.zeros((Nparticles, dim)) + 0.5 
+    initial_positionsy = np.zeros((Nparticles, dim)) + 0.5
+    
+    # Run Fleming-Viot simulation with scaled diffusion
+    allpositionsx, allpositionsy, alltime, all_rho = fleming_viot(
+        T, V, DV, D2V, 
+        lambda x: a(x) * epsilon, 
+        epsilon, c, h0, 
+        initial_positionsx, initial_positionsy
+    )
+    
+    return allpositionsx, allpositionsy, alltime, all_rho
 
-    alltime_replicates = []
-    allpositionsx_replicates = []
-    allpositionsy_replicates = []
-    all_rho_replicates = []
 
-    for replicate in range(3):  # Reduced replicates for quick test
-        allpositionsx, allpositionsy, alltime, all_rho = fleming_viot(T, V, DV, D2V, a, epsilon, c, h0, initial_positionsx, initial_positionsy)
-        
-        alltime_replicates.append(alltime)
-        allpositionsx_replicates.append(allpositionsx)
-        allpositionsy_replicates.append(allpositionsy)
-        all_rho_replicates.append(all_rho)
-
-    # Save all data
-    np.save(os.path.join(output_dir, 'alltime_replicates.npy'), alltime_replicates)
-    np.save(os.path.join(output_dir, 'allpositionsx_replicates.npy'), allpositionsx_replicates)
-    np.save(os.path.join(output_dir, 'allpositionsy_replicates.npy'), allpositionsy_replicates)
-    np.save(os.path.join(output_dir, 'all_rho_replicates.npy'), all_rho_replicates)
+def periodic_simulation(T, epsilon, h0, Nparticles):
+    """
+    Run complete periodic potential simulation (both vanilla and Fleming-Viot).
+    
+    This function orchestrates both simulation types and saves results to disk.
+    
+    Parameters:
+    - T: time horizon
+    - epsilon: temperature parameter
+    - h0: mean step size
+    - Nparticles: number of particles
+    
+    Returns:
+    - Dictionary containing simulation results and metadata
+    """
+    # Create output directory
+    output_dir = f'periodic/T_{T}_epsilon_{epsilon}_h0_{h0}_Nparticles_{Nparticles}'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    print(f"Running simulations: T={T}, epsilon={epsilon}, h0={h0}, Nparticles={Nparticles}")
+    
+    # Run vanilla simulation
+    print("  Running vanilla simulation...")
+    simple_trajectories_times, simple_trajectories_x = run_vanilla_simulation(T, epsilon, h0, Nparticles)
+    
+    # Run Fleming-Viot simulation  
+    print("  Running Fleming-Viot simulation...")
+    allpositionsx, allpositionsy, alltime, all_rho = run_fleming_viot_simulation(T, epsilon, h0, Nparticles)
+    
+    # Save vanilla simulation data
     np.save(os.path.join(output_dir, 'simple_trajectories_times.npy'), simple_trajectories_times)
     np.save(os.path.join(output_dir, 'simple_trajectories_x.npy'), simple_trajectories_x)
-
-    # Save parameters 
+    
+    # Save Fleming-Viot simulation data
+    np.save(os.path.join(output_dir, 'alltime.npy'), alltime)
+    np.save(os.path.join(output_dir, 'allpositionsx.npy'), allpositionsx)
+    np.save(os.path.join(output_dir, 'allpositionsy.npy'), allpositionsy)
+    np.save(os.path.join(output_dir, 'all_rho.npy'), all_rho)
+    
+    # Save parameters
     params = {
         'T': T,
         'epsilon': epsilon,
         'h0': h0,
         'Nparticles': Nparticles
     }
-
+    
     with open(os.path.join(output_dir, 'parameters.json'), 'w') as f:
         json.dump(params, f)
-
-    print(f"Simulation completed: T={T}, epsilon={epsilon}, h0={h0}, Nparticles={Nparticles}")
-    print(f"Data saved to {output_dir}/")
+    
+    print(f"  Simulation completed! Data saved to {output_dir}/")
     
     return {
         'output_dir': output_dir,
         'params': params,
-        'alltime_replicates': alltime_replicates,
-        'allpositionsx_replicates': allpositionsx_replicates,
-        'allpositionsy_replicates': allpositionsy_replicates,
-        'all_rho_replicates': all_rho_replicates,
         'simple_trajectories_times': simple_trajectories_times,
-        'simple_trajectories_x': simple_trajectories_x
+        'simple_trajectories_x': simple_trajectories_x,
+        'alltime': alltime,
+        'allpositionsx': allpositionsx,
+        'allpositionsy': allpositionsy,
+        'all_rho': all_rho
     }
 
 
-if __name__ == "__main__":
-    # Default parameters for standalone execution
-    T = 10
-    epsilon = 0.05
-    h0 = 0.05
-    Nparticles = 20
-    
-    result = periodic_cos(T, epsilon, h0, Nparticles)
-    print("Standalone simulation completed!")
