@@ -143,20 +143,25 @@ def killing_cloning(x_allparticles,y_allparticles,c_symm, rho_all, index):
 
 ## Fleming-Viot particle system
 
-def fleming_viot(T, V, DV, D2V, a, epsilon, c,h0, initial_positionsx,initial_positionsy): 
+def fleming_viot(T, V, DV, D2V, a, epsilon, c, h0, initial_positionsx, initial_positionsy, wrap_period=None):
     """
     Simulates n-dimensional Fleming-Viot particle system with given potential, drift, diffusion and kill/clone functions.
-    inputs. This method implements infinite swapping. 
-    - T: time horizon 
+    This method implements infinite swapping.
+
+    Parameters:
+    - T: time horizon
     - V: potential function
     - DV: potential gradient
     - D2V: potential laplacian
     - a: diffusion coefficient diagonal components only
     - epsilon: temperature
-    - c: kill rate
+    - c: kill rate (use c(x)=0 for pure sampling, non-zero for eigenfunction problems)
     - h0: mean step size of lattice
-    - Nparticles: number of particles
-    - initial_positions: initial positions of the particles
+    - initial_positionsx: initial x positions of the particles
+    - initial_positionsy: initial y positions of the particles
+    - wrap_period: if not None, wrap positions to [-wrap_period/2, wrap_period/2]
+                   Use for periodic BCs when c(x)=0 (e.g., wrap_period=1.0)
+                   Do NOT use when c(x) depends on position (e.g., quadratic killing)
     """
         
     # simulate
@@ -173,8 +178,9 @@ def fleming_viot(T, V, DV, D2V, a, epsilon, c,h0, initial_positionsx,initial_pos
     all_rho = np.array([rho_particles])
 
     # compute rates
-    ratesx = np.array([event_rates(x_allparticles[i,:],rho_particles[i],DV,D2V,a,c,h0) for i in range(Nparticles)])
-    ratesy = np.array([event_rates(y_allparticles[i,:],1-rho_particles[i],DV,D2V,a,c,h0) for i in range(Nparticles)])
+    # Use dtype=object because event_rates returns mixed types (scalars and arrays)
+    ratesx = np.array([event_rates(x_allparticles[i,:],rho_particles[i],DV,D2V,a,c,h0) for i in range(Nparticles)], dtype=object)
+    ratesy = np.array([event_rates(y_allparticles[i,:],1-rho_particles[i],DV,D2V,a,c,h0) for i in range(Nparticles)], dtype=object)
     clocksx = np.array([np.random.exponential(1/ratesx[i,0]) for i in range(Nparticles)])
     clocksy = np.array([np.random.exponential(1/ratesy[i,0]) for i in range(Nparticles)])
 
@@ -224,7 +230,7 @@ def fleming_viot(T, V, DV, D2V, a, epsilon, c,h0, initial_positionsx,initial_pos
         
         # regular dynamics or killing-cloning
         if np.random.rand() < np.sum(dynamics_rate)/ net_event_rate : # regular dynamics event
-            particles1[transition_index,:] = one_step_sde(particles1[transition_index,:],dynamics_rate,h_step)
+            particles1[transition_index,:] = one_step_sde(particles1[transition_index,:], dynamics_rate, h_step, wrap_period)
             index_to_recompute = [transition_index]
         else: # else killing/cloning event
             particles1, particles2, index_to_recompute = killing_cloning(particles1,particles2,killclone_rate,rho_particles1, transition_index)
@@ -352,18 +358,19 @@ def event_rates_vanilla(x,b,a,c,h):
 
 
 
-def fleming_viot_vanilla(T, b, a, c, h0, initial_positions):
+def fleming_viot_vanilla(T, b, a, c, h0, initial_positions, wrap_period=None):
     """
-    Simulates n-dimensional vanilla Fleming-Viot particle system with given potential, drift, diffusion and kill/clone functions.
-    inputs: 
-    - T: time horizon 
-    - b: drift
+    Simulates n-dimensional vanilla Fleming-Viot particle system.
+
+    Parameters:
+    - T: time horizon
+    - b: drift function
     - a: diffusion coefficient diagonal components only
-    - epsilon: temperature
-    - c: kill/clone rate
+    - c: kill/clone rate function
     - h0: mean step size of lattice
-    - Nparticles: number of particles
     - initial_positions: initial positions of the particles
+    - wrap_period: if not None, wrap positions to [-wrap_period/2, wrap_period/2]
+                   Use for periodic BCs when c(x)=0. Do NOT use with position-dependent killing.
     """
 
     # simulate
@@ -376,7 +383,8 @@ def fleming_viot_vanilla(T, b, a, c, h0, initial_positions):
 
 
     # compute rates
-    rates = np.array([event_rates_vanilla(allparticles[i,:],b,a,c,h0) for i in range(Nparticles)] )
+    # Use dtype=object because event_rates_vanilla returns mixed types (scalars and arrays)
+    rates = np.array([event_rates_vanilla(allparticles[i,:],b,a,c,h0) for i in range(Nparticles)], dtype=object)
     clocks = np.array([np.random.exponential(1/rates[i,0]) for i in range(Nparticles)])
 
     net_event_rate = rates[:,0]
@@ -399,7 +407,7 @@ def fleming_viot_vanilla(T, b, a, c, h0, initial_positions):
         # figure out x or y event
             #figure out regular dynamics rate or killing-cloning rate
         if np.random.rand() < np.sum(dynamics_rate[index])/ net_event_rate[index]: # regular dynamics event
-            allparticles[index,:] = one_step_sde(allparticles[index,:],dynamics_rate[index],h_step[index])
+            allparticles[index,:] = one_step_sde(allparticles[index,:], dynamics_rate[index], h_step[index], wrap_period)
             index_to_recompute = [index]
         else: #else killing/cloning event
             allparticles, index_to_recompute = killing_cloning_vanilla(allparticles,killclone_rate[index], index)            

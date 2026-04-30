@@ -42,75 +42,87 @@ def _define_periodic_potential():
     return V, DV, D2V, a, c
 
 
-def run_vanilla_simulation(T, epsilon, h0, Nparticles):
+def run_vanilla_simulation(T, epsilon, h0, Nparticles, periodic_bc=True):
     """
     Run vanilla pure jump diffusion simulation for N independent particles.
-    
+
     Parameters:
     - T: time horizon
     - epsilon: temperature parameter
     - h0: mean step size
     - Nparticles: number of independent particles to simulate
-    
+    - periodic_bc: if True, use periodic boundary conditions with period 1
+                   (positions wrapped to [-0.5, 0.5])
+
     Returns:
     - simple_trajectories_times: list of time arrays for each particle
     - simple_trajectories_x: list of position arrays for each particle
     """
     V, DV, D2V, a, c = _define_periodic_potential()
-    
+
+    # Set wrap_period based on periodic_bc flag
+    wrap_period = 1.0 if periodic_bc else None
+
     simple_trajectories_times = []
     simple_trajectories_x = []
-    
+
     for i in range(Nparticles):
-        # Random initial position between -1 and 1
-        initial_position = np.array([np.random.uniform(-1, 1)])
-        
+        # Random initial position in [-0.5, 0.5] (one period)
+        initial_position = np.array([np.random.uniform(-0.5, 0.5)])
+
         # Run pure jump approximation with scaled diffusion
         X_reference, t_reference = pure_jump_approx_diffusion(
-            T, 
-            lambda x: -DV(x) / epsilon, 
-            lambda x: a(x) * epsilon, 
-            h0, 
-            initial_position
+            T,
+            lambda x: -DV(x) / epsilon,
+            lambda x: a(x) * epsilon,
+            h0,
+            initial_position,
+            wrap_period=wrap_period
         )
-        
+
         simple_trajectories_times.append(t_reference)
         simple_trajectories_x.append(X_reference)
-    
+
     return simple_trajectories_times, simple_trajectories_x
 
 
-def run_fleming_viot_simulation(T, epsilon, h0, Nparticles):
+def run_fleming_viot_simulation(T, epsilon, h0, Nparticles, periodic_bc=True):
     """
     Run Fleming-Viot infinite swapping simulation.
-    
+
     Parameters:
     - T: time horizon
     - epsilon: temperature parameter
     - h0: mean step size
     - Nparticles: number of particles in the system
-    
+    - periodic_bc: if True, use periodic boundary conditions with period 1
+                   (positions wrapped to [-0.5, 0.5])
+
     Returns:
     - allpositionsx: forward process positions
-    - allpositionsy: backward process positions  
+    - allpositionsy: backward process positions
     - alltime: time points
     - all_rho: infinite swapping weights
     """
     V, DV, D2V, a, c = _define_periodic_potential()
     dim = 1
-    
-    # Initial positions (centered at 0.5)
-    initial_positionsx = np.zeros((Nparticles, dim)) + 0.5 
-    initial_positionsy = np.zeros((Nparticles, dim)) + 0.5
-    
-    # Run Fleming-Viot simulation with scaled diffusion
+
+    # Set wrap_period based on periodic_bc flag
+    wrap_period = 1.0 if periodic_bc else None
+
+    # Initial positions (centered at 0, the center of [-0.5, 0.5])
+    initial_positionsx = np.zeros((Nparticles, dim))
+    initial_positionsy = np.zeros((Nparticles, dim))
+
+    # Run Fleming-Viot simulation with scaled diffusion and periodic BCs
     allpositionsx, allpositionsy, alltime, all_rho = fleming_viot(
-        T, V, DV, D2V, 
-        lambda x: a(x) * epsilon, 
-        epsilon, c, h0, 
-        initial_positionsx, initial_positionsy
+        T, V, DV, D2V,
+        lambda x: a(x) * epsilon,
+        epsilon, c, h0,
+        initial_positionsx, initial_positionsy,
+        wrap_period=wrap_period
     )
-    
+
     return allpositionsx, allpositionsy, alltime, all_rho
 
 

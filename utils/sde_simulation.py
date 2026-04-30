@@ -24,52 +24,66 @@ def sde_transition_rates(x,beval,aeval,h):
     rates = np.append(rates_plus,rates_minus)
     return rates
 
-def one_step_sde(x,rates,h):
+def one_step_sde(x, rates, h, wrap_period=None):
     """
-    Performs one step of the jump process given current position and rates
-    x : particle positions, shape (d,)
-    rates: rates for jump process, shape (2*d,)
-    returns new position, shape (d,)
-    h: step size
+    Performs one step of the jump process given current position and rates.
+
+    Parameters:
+    - x: particle positions, shape (d,)
+    - rates: rates for jump process, shape (2*d,)
+    - h: step size
+    - wrap_period: if not None, wrap positions to [-wrap_period/2, wrap_period/2]
+
+    Returns:
+    - new_position: updated position, shape (d,)
     """
     d = len(x)
     total_rate = np.sum(rates)
     p = rates / total_rate
-    jump_direction = np.random.choice(np.arange(np.size(p)),p=p)
+    jump_direction = np.random.choice(np.arange(np.size(p)), p=p)
     new_position = x.copy()
     if jump_direction < d:
         new_position[jump_direction] += h
     else:
         new_position[jump_direction - d] -= h
-    
+
+    # Apply periodic boundary conditions if specified
+    if wrap_period is not None:
+        new_position = np.mod(new_position + wrap_period/2, wrap_period) - wrap_period/2
+
     return new_position
 
 
-def pure_jump_approx_diffusion(T,b,a,h0,initial_position ):
-    """ Simulate n-dimension diffusion process via pure jump process on a lattice with given drift and diffusion functions
-    
+def pure_jump_approx_diffusion(T, b, a, h0, initial_position, wrap_period=None):
+    """Simulate n-dimension diffusion process via pure jump process on a lattice.
+
     Parameters:
     - T: time horizon
     - b: drift function
     - a: diffusion function
     - h0: mean step size of lattice
     - initial_position: initial position of the process
-    
+    - wrap_period: if not None, wrap positions to [-wrap_period/2, wrap_period/2]
+                   Use this for periodic boundary conditions (e.g., wrap_period=1.0)
+
+    Returns:
+    - all_positions: array of positions at each time step
+    - all_time: array of time points
     """
 
-    d = len(initial_position) # dimension of the process
+    d = len(initial_position)  # dimension of the process
     current_time = 0
     all_time = np.array([current_time])
 
     all_positions = np.array([initial_position])
 
-    while current_time < T: 
-        h = np.random.uniform(h0/2,3*h0/2)
-        beval = b(all_positions[-1,:])
+    while current_time < T:
+        h = np.random.uniform(h0/2, 3*h0/2)
+        beval = b(all_positions[-1, :])
 
-        aeval = a(all_positions[-1,:])
+        aeval = a(all_positions[-1, :])
 
-        rates = sde_transition_rates(all_positions[-1,:],beval,aeval,h)
+        rates = sde_transition_rates(all_positions[-1, :], beval, aeval, h)
         total_rate = np.sum(rates)
 
         waiting_time = np.random.exponential(1/total_rate)
@@ -78,12 +92,17 @@ def pure_jump_approx_diffusion(T,b,a,h0,initial_position ):
             break
 
         p = rates / total_rate
-        jump_direction = np.random.choice(np.arange(np.size(p)),p=p)
-        new_position = all_positions[-1,:].copy()
+        jump_direction = np.random.choice(np.arange(np.size(p)), p=p)
+        new_position = all_positions[-1, :].copy()
         if jump_direction < d:
             new_position[jump_direction] += h
         else:
             new_position[jump_direction - d] -= h
-        all_positions = np.vstack((all_positions,new_position))
-        all_time = np.append(all_time,current_time)
+
+        # Apply periodic boundary conditions if specified
+        if wrap_period is not None:
+            new_position = np.mod(new_position + wrap_period/2, wrap_period) - wrap_period/2
+
+        all_positions = np.vstack((all_positions, new_position))
+        all_time = np.append(all_time, current_time)
     return all_positions, all_time

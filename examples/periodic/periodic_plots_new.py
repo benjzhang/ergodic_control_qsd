@@ -71,10 +71,14 @@ def plot_trajectory_analysis(output_dir):
     fig4.savefig(figures_dir / 'allpositionsy_first_replicate_plot.png')
     
     # Plot simple trajectories
-    simple_times_flat = [time for replicate in simple_trajectories_times[0] for time in replicate]
-    simple_x_flat = [x for replicate in simple_trajectories_x[0] for x in replicate]
-    
-    fig5 = plot_periodic_trajectories_list(simple_times_flat[:5], simple_x_flat[:5])  # Plot first 5
+    # simple_trajectories_times[replicate_idx] is a list of time arrays, one per particle
+    # simple_trajectories_x[replicate_idx] is a list of position arrays, one per particle
+    first_replicate_times = simple_trajectories_times[0]  # List of N_particles time arrays
+    first_replicate_x = simple_trajectories_x[0]  # List of N_particles position arrays
+
+    # Take up to 5 particles from the first replicate
+    n_to_plot = min(5, len(first_replicate_times))
+    fig5 = plot_periodic_trajectories_list(first_replicate_times[:n_to_plot], first_replicate_x[:n_to_plot])
     fig5.suptitle(f'Simple Trajectories: T={T}, epsilon={epsilon}, Nparticles={Nparticles}, h0={h0}')
     fig5.savefig(figures_dir / 'simple_trajectories_plot.png')
     
@@ -206,9 +210,14 @@ def plot_postprocessing_analysis(postprocessing_results):
     
     # Define the range for x
     x_values = np.linspace(-1, 1, 500)
-    
+
     # Compute exp(-V(x)/epsilon) for the given range of x
-    y_values = np.exp(-V(x_values) / epsilon) / 2.3294  # Normalize by 2.3294
+    # Normalization constant Z = integral of exp(-V(x)/epsilon) over [-1, 1]
+    # For V(x) = cos(2*pi*x)/(2*pi) and epsilon=0.1, Z ≈ 2.3294
+    # We compute it numerically for accuracy across different epsilon values
+    unnormalized = np.exp(-V(x_values) / epsilon)
+    normalization_constant = np.trapezoid(unnormalized, x_values)
+    y_values = unnormalized / normalization_constant
     
     # Plot the density
     plt.plot(x_values, y_values, color='red', label=r'$e^{-V(x)/\epsilon}$')
