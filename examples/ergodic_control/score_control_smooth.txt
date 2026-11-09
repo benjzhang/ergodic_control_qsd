@@ -1,0 +1,1 @@
+v3 analytic-baseline: rel error (grad log phi) = 0.8902, dir cos = 0.7001

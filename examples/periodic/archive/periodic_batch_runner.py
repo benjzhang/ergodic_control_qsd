@@ -9,7 +9,7 @@ import numpy as np
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
-from periodic_simulation import periodic_simulation
+from periodic_simulation import periodic_simulation, to_object_array
 import time
 import json
 
@@ -17,13 +17,13 @@ import json
 def save_checkpoint(output_dir, data_arrays, params, replicate_count):
     """Save current progress to disk."""
     
-    # Save replicate arrays
-    np.save(os.path.join(output_dir, 'alltime_replicates.npy'), data_arrays['alltime_replicates'])
-    np.save(os.path.join(output_dir, 'allpositionsx_replicates.npy'), data_arrays['allpositionsx_replicates'])
-    np.save(os.path.join(output_dir, 'allpositionsy_replicates.npy'), data_arrays['allpositionsy_replicates'])
-    np.save(os.path.join(output_dir, 'all_rho_replicates.npy'), data_arrays['all_rho_replicates'])
-    np.save(os.path.join(output_dir, 'simple_trajectories_times.npy'), data_arrays['simple_trajectories_times'])
-    np.save(os.path.join(output_dir, 'simple_trajectories_x.npy'), data_arrays['simple_trajectories_x'])
+    # Save replicate arrays (ragged across replicates -> object arrays for numpy>=2)
+    np.save(os.path.join(output_dir, 'alltime_replicates.npy'), to_object_array(data_arrays['alltime_replicates']))
+    np.save(os.path.join(output_dir, 'allpositionsx_replicates.npy'), to_object_array(data_arrays['allpositionsx_replicates']))
+    np.save(os.path.join(output_dir, 'allpositionsy_replicates.npy'), to_object_array(data_arrays['allpositionsy_replicates']))
+    np.save(os.path.join(output_dir, 'all_rho_replicates.npy'), to_object_array(data_arrays['all_rho_replicates']))
+    np.save(os.path.join(output_dir, 'simple_trajectories_times.npy'), to_object_array(data_arrays['simple_trajectories_times']))
+    np.save(os.path.join(output_dir, 'simple_trajectories_x.npy'), to_object_array(data_arrays['simple_trajectories_x']))
     
     # Save parameters and progress info
     progress_info = params.copy()
@@ -49,10 +49,10 @@ def run_batch_simulations(n_replicates=3, save_every=10):
     """
     
     # Parameter combinations to test
-    T_values = [2]
-    epsilon_values = [0.1]
+    T_values = [100]
+    epsilon_values = [0.01]
     h0_values = [0.1]
-    Nparticles_values = [5]
+    Nparticles_values = [10]
     
     total_combinations = len(T_values) * len(epsilon_values) * len(h0_values) * len(Nparticles_values)
     
@@ -161,7 +161,7 @@ def run_batch_simulations(n_replicates=3, save_every=10):
 
 if __name__ == "__main__":
     # Run with more frequent saves for testing
-    results = run_batch_simulations(n_replicates=3, save_every=2)
+    results = run_batch_simulations(n_replicates=2, save_every=1)
     
     # Print detailed summary
     print("\n📊 DETAILED SUMMARY:")

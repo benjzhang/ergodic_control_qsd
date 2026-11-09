@@ -261,13 +261,18 @@ def resample_simple_weighted_empirical_measure(x_particle, all_time):
     return samples
 
 
-def resample_weighted_empirical_measure(x_particle, rho, all_time):
+def resample_weighted_empirical_measure(x_particle, rho, all_time, y_particle=None):
     """
     Resamples empirical measure of particle path with respect to weighted empirical measure.
-    
+
     This function resamples points from a particle trajectory using weights that combine
-    both time weighting and infinite swapping weights rho. This is particularly useful
-    for sampling from the forward component of a coupled particle system.
+    both time weighting and infinite swapping weights rho.
+
+    If ``y_particle`` is given, it resamples from the FULL symmetrized empirical measure
+    of the coupled system -- pooling x with weight dt*rho AND y with weight dt*(1-rho) --
+    which is the correct target (matches ``weighted_empirical_measure_functional``). If
+    ``y_particle`` is None (default) it resamples the forward marginal only (weight dt*rho),
+    which is a *partial* measure and can look asymmetric even when the estimator is unbiased.
     
     Parameters
     ----------
@@ -303,8 +308,14 @@ def resample_weighted_empirical_measure(x_particle, rho, all_time):
     >>> # Position [1] more likely to appear due to high rho value
     """
     dt = np.append(np.diff(all_time), 0)
-    weights = dt * rho
+    if y_particle is None:
+        pool = x_particle
+        weights = dt * rho
+    else:
+        pool = np.concatenate([x_particle, y_particle], axis=0)          # both replicas
+        weights = np.concatenate([dt * rho, dt * (1 - rho)], axis=0)     # x -> dt*rho, y -> dt*(1-rho)
+    weights = np.clip(weights, 0, None)
     weights = weights / np.sum(weights)
     samples_index = np.random.choice(np.arange(len(weights)), size=len(weights), p=weights)
-    samples = x_particle[samples_index]
+    samples = pool[samples_index]
     return samples

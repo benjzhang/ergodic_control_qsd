@@ -15,6 +15,19 @@ from utils import pure_jump_approx_diffusion, fleming_viot
 import json
 
 
+def to_object_array(seq):
+    """Pack a (possibly ragged) sequence of arrays into a 1-D object array.
+
+    numpy>=2 raises on np.save/np.array of ragged nested sequences unless an
+    object dtype is used. Building the object array element-by-element works
+    regardless of whether the inner arrays happen to share a shape.
+    """
+    arr = np.empty(len(seq), dtype=object)
+    for i, v in enumerate(seq):
+        arr[i] = v
+    return arr
+
+
 def _define_periodic_potential():
     """
     Define the periodic cosine potential and its derivatives.
@@ -51,8 +64,8 @@ def run_vanilla_simulation(T, epsilon, h0, Nparticles, periodic_bc=True):
     - epsilon: temperature parameter
     - h0: mean step size
     - Nparticles: number of independent particles to simulate
-    - periodic_bc: if True, use periodic boundary conditions with period 1
-                   (positions wrapped to [-0.5, 0.5])
+    - periodic_bc: if True, use periodic boundary conditions with period 2
+                   (positions wrapped to [-1, 1])
 
     Returns:
     - simple_trajectories_times: list of time arrays for each particle
@@ -60,8 +73,8 @@ def run_vanilla_simulation(T, epsilon, h0, Nparticles, periodic_bc=True):
     """
     V, DV, D2V, a, c = _define_periodic_potential()
 
-    # Set wrap_period based on periodic_bc flag
-    wrap_period = 1.0 if periodic_bc else None
+    # Set wrap_period based on periodic_bc flag (period 2 -> domain [-1, 1], two periods of V)
+    wrap_period = 2.0 if periodic_bc else None
 
     simple_trajectories_times = []
     simple_trajectories_x = []
@@ -70,10 +83,12 @@ def run_vanilla_simulation(T, epsilon, h0, Nparticles, periodic_bc=True):
         # Random initial position in [-0.5, 0.5] (one period)
         initial_position = np.array([np.random.uniform(-0.5, 0.5)])
 
-        # Run pure jump approximation with scaled diffusion
+        # Run pure jump approximation. Drift -DV with diffusion a*epsilon (=2*epsilon)
+        # gives invariant measure exp(-V/epsilon), matching the Fleming-Viot target.
+        # (Previously -DV/epsilon, which yielded exp(-V/epsilon^2): too cold, poor mixing.)
         X_reference, t_reference = pure_jump_approx_diffusion(
             T,
-            lambda x: -DV(x) / epsilon,
+            lambda x: -DV(x),
             lambda x: a(x) * epsilon,
             h0,
             initial_position,
@@ -95,8 +110,8 @@ def run_fleming_viot_simulation(T, epsilon, h0, Nparticles, periodic_bc=True):
     - epsilon: temperature parameter
     - h0: mean step size
     - Nparticles: number of particles in the system
-    - periodic_bc: if True, use periodic boundary conditions with period 1
-                   (positions wrapped to [-0.5, 0.5])
+    - periodic_bc: if True, use periodic boundary conditions with period 2
+                   (positions wrapped to [-1, 1])
 
     Returns:
     - allpositionsx: forward process positions
@@ -107,8 +122,8 @@ def run_fleming_viot_simulation(T, epsilon, h0, Nparticles, periodic_bc=True):
     V, DV, D2V, a, c = _define_periodic_potential()
     dim = 1
 
-    # Set wrap_period based on periodic_bc flag
-    wrap_period = 1.0 if periodic_bc else None
+    # Set wrap_period based on periodic_bc flag (period 2 -> domain [-1, 1], two periods of V)
+    wrap_period = 2.0 if periodic_bc else None
 
     # Initial positions (centered at 0, the center of [-0.5, 0.5])
     initial_positionsx = np.zeros((Nparticles, dim))
@@ -155,9 +170,9 @@ def periodic_simulation(T, epsilon, h0, Nparticles):
     print("  Running Fleming-Viot simulation...")
     allpositionsx, allpositionsy, alltime, all_rho = run_fleming_viot_simulation(T, epsilon, h0, Nparticles)
     
-    # Save vanilla simulation data
-    np.save(os.path.join(output_dir, 'simple_trajectories_times.npy'), simple_trajectories_times)
-    np.save(os.path.join(output_dir, 'simple_trajectories_x.npy'), simple_trajectories_x)
+    # Save vanilla simulation data (ragged per-particle arrays -> object array)
+    np.save(os.path.join(output_dir, 'simple_trajectories_times.npy'), to_object_array(simple_trajectories_times))
+    np.save(os.path.join(output_dir, 'simple_trajectories_x.npy'), to_object_array(simple_trajectories_x))
     
     # Save Fleming-Viot simulation data
     np.save(os.path.join(output_dir, 'alltime.npy'), alltime)

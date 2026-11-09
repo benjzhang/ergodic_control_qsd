@@ -134,12 +134,15 @@ class TestSymmetrizedKillCloneRate:
         D2V = lambda z: 2 * np.ones_like(z[0])  # constant Laplacian
         c = lambda z: 1.0  # constant kill rate
 
-        c_symm = symmetrized_kill_clone_rate(x, rhoeps, D2V, c)
+        r_kf, r_kb = symmetrized_kill_clone_rate(x, rhoeps, D2V, c)
 
-        # c_symm = c(x) - (1-rhoeps) * D2V(x)
-        expected = 1.0 - (1 - 0.3) * 2.0
-        assert np.isclose(c_symm, expected), \
-            f"Expected {expected}, got {c_symm}"
+        # r_kf = rhoeps * c(x); r_kb = (1-rhoeps)*(c(x) - D2V(x))
+        expected_kf = 0.3 * 1.0
+        expected_kb = (1 - 0.3) * (1.0 - 2.0)
+        assert np.isclose(r_kf, expected_kf), f"Expected r_kf {expected_kf}, got {r_kf}"
+        assert np.isclose(r_kb, expected_kb), f"Expected r_kb {expected_kb}, got {r_kb}"
+        # their sum is the symmetrized kill/clone rate c(x) - (1-rhoeps)*D2V(x)
+        assert np.isclose(r_kf + r_kb, 1.0 - (1 - 0.3) * 2.0)
 
 
 class TestEventRates:
@@ -157,8 +160,8 @@ class TestEventRates:
 
         result = event_rates(x, rhoeps, DV, D2V, a, c, h)
 
-        assert len(result) == 4, "Should return 4 values"
-        net_rate, dynamics_rates, kill_clone_rate, h_step = result
+        assert len(result) == 5, "Should return 5 values"
+        net_rate, dynamics_rates, r_kf, r_kb, h_step = result
 
         assert isinstance(net_rate, (int, float, np.floating)), \
             "net_rate should be scalar"
@@ -175,7 +178,7 @@ class TestEventRates:
         c = lambda z: 0.5
         h = 0.1
 
-        net_rate, _, _, _ = event_rates(x, rhoeps, DV, D2V, a, c, h)
+        net_rate, _, _, _, _ = event_rates(x, rhoeps, DV, D2V, a, c, h)
 
         assert net_rate > 0, "Net event rate should be positive"
 

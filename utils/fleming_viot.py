@@ -36,23 +36,29 @@ def symmetrized_dynamics(x,rho_eps,DV):
     return bsymm
 
 
-def symmetrized_kill_clone_rate(x,rhoeps,D2V,c): 
+def symmetrized_kill_clone_rate(x,rhoeps,D2V,c):
     """
-    Computes symmetrized kill clone rate for pair of coupled particles
+    Computes the forward and backward kill/clone rates for the active replica x.
+
+    The symmetrized kill/clone rate c(x) - (1-rhoeps)*D2V(x) is split into two
+    signed channels:
+        r_kf = rhoeps * c(x)                     (forward channel)
+        r_kb = (1 - rhoeps) * (c(x) - D2V(x))    (backward channel)
+    so that r_kf + r_kb = c(x) - (1-rhoeps)*D2V(x). Each channel fires
+    independently at rate |r_k.|; its sign selects kill (>0) vs clone (<0).
 
     x : particle 1, shape (d,)
     rhoeps: infinite swap fraction recomputed with partner particle y, scalar
     D2V: potential laplacian, callable
     c: kill rate, callable
-    
-    returns evaluation of kill/clone rate for particle x
-    """
-    
-    # rho_eps_yx = inf_swap_rate(y,x,V,epsilon)
-    rho_eps_yx = 1 - rhoeps
-    c_symm = c(x) - rho_eps_yx * D2V(x)
 
-    return c_symm
+    returns forward and backward kill/clone rates r_kf, r_kb for particle x
+    """
+    cx = c(x)
+    r_kf = rhoeps * cx
+    r_kb = (1 - rhoeps) * (cx - D2V(x))
+
+    return r_kf, r_kb
 
 
 ###
@@ -72,8 +78,10 @@ def event_rates(x,rhoeps,DV,D2V,a,c,h):
     h: mean step size of lattice, scalar
 
     returns net_event_rate for particle x, scalar
-            kill_clone_rate for particle x, scalar
             dynamics transition rate for particle x, vector of shape (2*d,)
+            forward kill/clone rate r_kf for particle x, scalar
+            backward kill/clone rate r_kb for particle x, scalar
+            h_step, scalar
     """
 
     h_step = np.random.uniform(h/2,3*h/2)
@@ -83,13 +91,13 @@ def event_rates(x,rhoeps,DV,D2V,a,c,h):
     aeval = a(x)
     dynamics_rates = sde_transition_rates(x,bsymm,aeval,h_step)
 
-    ## kill/clone rate
-    c_symm = symmetrized_kill_clone_rate(x,rhoeps,D2V,c)
+    ## forward/backward kill/clone rates (two independent signed channels)
+    r_kf, r_kb = symmetrized_kill_clone_rate(x,rhoeps,D2V,c)
 
     ## net event rate
-    net_event_rate = np.sum(dynamics_rates) + abs(c_symm)
+    net_event_rate = np.sum(dynamics_rates) + abs(r_kf) + abs(r_kb)
 
-    return net_event_rate, dynamics_rates, c_symm, h_step
+    return net_event_rate, dynamics_rates, r_kf, r_kb, h_step
 
 
 
@@ -97,46 +105,43 @@ def event_rates(x,rhoeps,DV,D2V,a,c,h):
 
 ### Killing-cloning functions
 
-def killing_cloning(x_allparticles,y_allparticles,c_symm, rho_all, index): 
+def killing_cloning(x_allparticles,y_allparticles,rho_all,index,rate):
     """
-    Performs killing-cloning event for particle x with partner particle y. The index denotes the particle pair to be killed or cloned. 
-    
+    Performs a single-channel killing/cloning event for the active replica x^index.
+
+    This is called once per fired kill/clone channel (forward or backward). The
+    sign of `rate` selects kill (>0) vs clone (<0); `rho_all` is the swap-weight
+    array of the channel's own marginal (rho for the forward channel, 1-rho for
+    the backward channel), used to pick which replica at the donor index `i'`.
+
     x_allparticles : all particle positions, shape (n,d)
-    y_allparticles: all particle positions, shape (n,d)"""
+    y_allparticles : all particle positions, shape (n,d)
+    rho_all : per-particle swap weights for this channel's marginal, shape (n,)
+    index : active particle index i
+    rate : signed kill/clone rate of this channel (scalar)
+    """
 
     Nparticles = x_allparticles.shape[0]
     xnow = x_allparticles[index,:].copy()
-    ynow = y_allparticles[index,:].copy()
-    rho_eps_xy = rho_all[index]
-    
     newindex = np.random.choice(Nparticles) # randomly sample from all indices
 
-    if newindex == index: 
-        xnew = xnow; index_to_recompute = np.array([index]) # if new index is same as old, assign back to original particle
+    if newindex == index:
+        index_to_recompute = np.array([index]) # self-selection: do not move
 
-    else: 
-        if c_symm> 0:  # kill and respawn
-            if np.random.rand() < rho_eps_xy : # figure out if fwd or bwd
-                if np.random.rand() < rho_all[newindex] :# otherwise, find a forward particle to jump to 
-                    xnew = x_allparticles[newindex,:].copy(); index_to_recompute = np.array([newindex])
-                else: xnew = y_allparticles[newindex,:].copy(); index_to_recompute = np.array([newindex])
-            else: 
-                if np.random.rand() < 1-rho_all[newindex] :# otherwise, find a backward particle to jump to 
-                    xnew = y_allparticles[newindex,:].copy(); index_to_recompute = np.array([newindex])
-                else: xnew = x_allparticles[newindex,:].copy(); index_to_recompute = np.array([newindex])
-            
-            x_allparticles[index,:] = xnew
+    elif rate > 0:  # kill and respawn from this channel's marginal
+        if np.random.rand() < rho_all[newindex]:
+            x_allparticles[index,:] = x_allparticles[newindex,:].copy()
+        else:
+            x_allparticles[index,:] = y_allparticles[newindex,:].copy()
+        index_to_recompute = np.array([index])
 
-        else: # clone and cull
-            if np.random.rand() < rho_eps_xy : # figure out if fwd or bwd
-                if np.random.rand() < rho_all[newindex] : # otherwise, clone current particle by body-snatching the forward particle at newindex
-                    x_allparticles[newindex,:] = xnow; index_to_recompute = np.array([index, newindex])
-                else: y_allparticles[newindex,:] = xnow; index_to_recompute = np.array([index, newindex])
-            else:
-                if np.random.rand() < 1-rho_all[newindex] : # otherwise, clone current particle by body-snatching the backward particle at newindex
-                    y_allparticles[newindex,:] = xnow; index_to_recompute = np.array([index, newindex])
-                else: x_allparticles[newindex,:] = xnow; index_to_recompute = np.array([index, newindex])
-                
+    else:  # clone into this channel's marginal at the donor index
+        if np.random.rand() < rho_all[newindex]:
+            x_allparticles[newindex,:] = xnow
+        else:
+            y_allparticles[newindex,:] = xnow
+        index_to_recompute = np.array([index, newindex])
+
     return x_allparticles, y_allparticles, index_to_recompute
 
 
@@ -169,13 +174,15 @@ def fleming_viot(T, V, DV, D2V, a, epsilon, c, h0, initial_positionsx, initial_p
     x_allparticles = initial_positionsx.copy()
     y_allparticles = initial_positionsy.copy()
     current_time = 0
-    all_time = np.array([current_time])
-    all_positionsx = np.array([initial_positionsx.copy()])
-    all_positionsy = np.array([initial_positionsy.copy()])
+    # Accumulate per-event snapshots in lists and stack once at the end.
+    # (vstack-per-event was O(n^2) in the number of events.)
+    all_time = [current_time]
+    all_positionsx = [initial_positionsx.copy()]
+    all_positionsy = [initial_positionsy.copy()]
 
 
     rho_particles = np.array([inf_swap_rate(x_allparticles[i,:],y_allparticles[i,:],V,epsilon) for i in range(Nparticles)])
-    all_rho = np.array([rho_particles])
+    all_rho = [rho_particles.copy()]
 
     # compute rates
     # Use dtype=object because event_rates returns mixed types (scalars and arrays)
@@ -190,14 +197,17 @@ def fleming_viot(T, V, DV, D2V, a, epsilon, c, h0, initial_positionsx, initial_p
     dynamics_ratex = ratesx[:,1]
     dynamics_ratey = ratesy[:,1]
 
-    killclone_ratex = ratesx[:,2]
-    killclone_ratey = ratesy[:,2]
+    rkf_x = ratesx[:,2]
+    rkf_y = ratesy[:,2]
 
-    h_stepx = ratesx[:,3]
-    h_stepy = ratesy[:,3]
-    
+    rkb_x = ratesx[:,3]
+    rkb_y = ratesy[:,3]
 
-    while current_time < T: 
+    h_stepx = ratesx[:,4]
+    h_stepy = ratesy[:,4]
+
+
+    while current_time < T:
         # find next event
         index = np.argmin(np.append(clocksx,clocksy))
         elapsed_time = np.min(np.append(clocksx,clocksy))
@@ -213,27 +223,33 @@ def fleming_viot(T, V, DV, D2V, a, epsilon, c, h0, initial_positionsx, initial_p
             particles1 = x_allparticles.copy()
             particles2 = y_allparticles.copy()
             dynamics_rate = dynamics_ratex[index]
-            killclone_rate = killclone_ratex[index]
+            rkf = rkf_x[index]
+            rkb = rkb_x[index]
             net_event_rate = net_event_ratex[index]
             h_step = h_stepx[index]
             rho_particles1 = rho_particles
-        else: 
+        else:
             particles1 = y_allparticles.copy()
             particles2 = x_allparticles.copy()
             dynamics_rate = dynamics_ratey[index - Nparticles]
-            killclone_rate = killclone_ratey[index - Nparticles]
+            rkf = rkf_y[index - Nparticles]
+            rkb = rkb_y[index - Nparticles]
             net_event_rate = net_event_ratey[index - Nparticles]
             h_step = h_stepy[index - Nparticles]
             rho_particles1 = 1 - rho_particles
 
         transition_index = np.mod(index,Nparticles)
         
-        # regular dynamics or killing-cloning
-        if np.random.rand() < np.sum(dynamics_rate)/ net_event_rate : # regular dynamics event
+        # regular dynamics, forward kill/clone, or backward kill/clone
+        a_draw = np.random.rand()
+        dyn_frac = np.sum(dynamics_rate) / net_event_rate
+        if a_draw < dyn_frac: # regular dynamics event
             particles1[transition_index,:] = one_step_sde(particles1[transition_index,:], dynamics_rate, h_step, wrap_period)
             index_to_recompute = [transition_index]
-        else: # else killing/cloning event
-            particles1, particles2, index_to_recompute = killing_cloning(particles1,particles2,killclone_rate,rho_particles1, transition_index)
+        elif a_draw < dyn_frac + abs(rkf)/net_event_rate: # forward kill/clone channel
+            particles1, particles2, index_to_recompute = killing_cloning(particles1,particles2,rho_particles1, transition_index, rkf)
+        else: # backward kill/clone channel
+            particles1, particles2, index_to_recompute = killing_cloning(particles1,particles2,1-rho_particles1, transition_index, rkb)
 
         # update particle positions
         if index < Nparticles:
@@ -262,18 +278,21 @@ def fleming_viot(T, V, DV, D2V, a, epsilon, c, h0, initial_positionsx, initial_p
         dynamics_ratex = ratesx[:,1]
         dynamics_ratey = ratesy[:,1]
 
-        killclone_ratex = ratesx[:,2]
-        killclone_ratey = ratesy[:,2]
+        rkf_x = ratesx[:,2]
+        rkf_y = ratesy[:,2]
 
-        h_stepx = ratesx[:,3]
-        h_stepy = ratesy[:,3]
-        
-        all_positionsx = np.vstack((all_positionsx,np.array([x_allparticles])))
-        all_positionsy = np.vstack((all_positionsy,np.array([y_allparticles])))
-        all_time = np.append(all_time,current_time)
-        all_rho = np.vstack((all_rho,np.array([rho_particles])))
+        rkb_x = ratesx[:,3]
+        rkb_y = ratesy[:,3]
 
-    return all_positionsx, all_positionsy, all_time, all_rho
+        h_stepx = ratesx[:,4]
+        h_stepy = ratesy[:,4]
+
+        all_positionsx.append(x_allparticles.copy())
+        all_positionsy.append(y_allparticles.copy())
+        all_time.append(current_time)
+        all_rho.append(rho_particles.copy())
+
+    return np.array(all_positionsx), np.array(all_positionsy), np.array(all_time), np.array(all_rho)
 
 
 
@@ -377,8 +396,8 @@ def fleming_viot_vanilla(T, b, a, c, h0, initial_positions, wrap_period=None):
     Nparticles = initial_positions.shape[0]
     allparticles = initial_positions
     current_time = 0
-    all_time = np.array([current_time])
-    all_positions = np.array([initial_positions])
+    all_time_list = [current_time]
+    all_positions_list = [initial_positions.copy()]   # O(n) accumulation (avoid O(n^2) vstack)
 
 
 
@@ -429,7 +448,7 @@ def fleming_viot_vanilla(T, b, a, c, h0, initial_positions, wrap_period=None):
         killclone_rate = rates[:,2]
         h_step = rates[:,3]
         
-        all_positions = np.vstack((all_positions,np.array([allparticles])))
-        all_time = np.append(all_time,current_time)
+        all_positions_list.append(allparticles.copy())
+        all_time_list.append(current_time)
 
-    return all_positions, all_time
+    return np.array(all_positions_list), np.array(all_time_list)

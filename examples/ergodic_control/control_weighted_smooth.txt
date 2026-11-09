@@ -1,0 +1,1 @@
+WEIGHTED: J=2.8192 lambda=2.6709 gap=0.0555 rho_corr=0.9857 energy=0.8775
